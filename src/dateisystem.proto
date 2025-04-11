@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package dateisystem;
+
+service SyncService {
+  rpc SyncFile (SyncRequest) returns (SyncResponse);
+}
+
+// Struktur für Req
+message SyncRequest {
+  string file_path = 1;   // Pfad der zu synchronisierenden Datei
+  string hash = 2;        // Berechneter Hash-Wert zur Änderungserkennung
+  bytes file_content = 3; // Dateiinhalt (bei Änderung)
+}
+
+// Struktur für Res
+message SyncResponse {
+  bool success = 1;       // Gibt an, ob die Synchronisation erfolgreich war
+  string message = 2;     // Nachricht (z. B. Status oder Fehlerbeschreibung)
+}
