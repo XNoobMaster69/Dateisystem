@@ -4,13 +4,18 @@
     cd Dateisystem
     chmod +x config.sh
     ./config.sh
+
+**After the config.sh is done, set local paths**
+
+    export MY_INSTALL_DIR="$HOME/.local"
+    mkdir -p "$MY_INSTALL_DIR"
+    export PATH="$MY_INSTALL_DIR/bin:$PATH"
 ## Compile and Build (Unix) 
-**Before compiling and building, add the right HOME_PATH usually /home/<user>**
+Before compiling and building, add the right **HOME_PATH** to **CMakeLists.txt** usually /home/<user>
 
     mkdir -p cmake/build
     pushd cmake/build
     cmake -DCMAKE_PREFIX_PATH=$MY_INSTALL_DIR ../..
     make -j 4
 
-
-## Binaries are found in Dateisystem/cmake/build/<client | server>
+**Binaries are found in Dateisystem/cmake/build/<client | server>**
