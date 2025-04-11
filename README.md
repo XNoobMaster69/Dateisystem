@@ -1,7 +1,9 @@
 # Verteiltes Dateisystem
 
 ## For new installation use config.sh with the right username and password. If developing on one machine comment the remote parts of the script out
-
+    cd Dateisystem
+    chmod +x config.sh
+    ./config.sh
 ## Compile and Build (Unix) 
     cd Dateisystem
     mkdir -p cmake/build
