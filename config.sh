@@ -55,3 +55,7 @@ cmake -DgRPC_INSTALL=ON \
 make -j 4
 make install
 popd
+
+export MY_INSTALL_DIR="$HOME/.local"
+mkdir -p "$MY_INSTALL_DIR"
+export PATH="$MY_INSTALL_DIR/bin:$PATH"

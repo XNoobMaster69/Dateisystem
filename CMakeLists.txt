@@ -4,15 +4,15 @@ project(Dateisystem)
 find_package(gRPC)
 find_package(Protobuf REQUIRED)
 
-set(CURRENT_USER rse)
+set(HOME_PATH /home/rse)
 set(SRC_DIR ${PROJECT_SOURCE_DIR}/src)
 set(PROTO_FILE ${SRC_DIR}/dateisystem.proto)
-set(gRPC_CPP_PLUGIN_EXECUTABLE /home/${CURRENT_USER}/.local/bin/grpc_cpp_plugin)
+set(gRPC_CPP_PLUGIN_EXECUTABLE /${HOME_PATH}/.local/bin/grpc_cpp_plugin)
 set(GENERATED_DIR ${PROJECT_SOURCE_DIR}/src/generated)
 
 include_directories(${SRC_DIR})
-link_directories(/home/${CURRENT_USER}/.local/lib)
-include_directories(/home/${CURRENT_USER}/.local/include)
+link_directories(${HOME_PATH}/.local/lib)
+include_directories(${HOME_PATH}/.local/include)
 
 
 add_custom_command(
@@ -39,18 +39,18 @@ add_executable(server ${SRC_DIR}/server.cpp ${GENERATED_DIR}/dateisystem.pb.cc $
 target_link_libraries(server PRIVATE
   gRPC::grpc++
   protobuf::libprotobuf
-  /home/${CURRENT_USER}/.local/lib/libutf8_range_lib.a
-  /home/${CURRENT_USER}/.local/lib/libutf8_range.a
-  /home/${CURRENT_USER}/.local/lib/libabsl_utf8_for_code_point.a
-  /home/${CURRENT_USER}/.local/lib/libutf8_validity.a
+  ${HOME_PATH}/.local/lib/libutf8_range_lib.a
+  ${HOME_PATH}/.local/lib/libutf8_range.a
+  ${HOME_PATH}/.local/lib/libabsl_utf8_for_code_point.a
+  ${HOME_PATH}/.local/lib/libutf8_validity.a
 )
 
 add_executable(client ${SRC_DIR}/client.cpp ${GENERATED_DIR}/dateisystem.pb.cc ${GENERATED_DIR}/dateisystem.grpc.pb.cc)
 target_link_libraries(client PRIVATE
   gRPC::grpc++
   protobuf::libprotobuf
-  /home/${CURRENT_USER}/.local/lib/libutf8_range_lib.a
-  /home/${CURRENT_USER}/.local/lib/libutf8_range.a
-  /home/${CURRENT_USER}/.local/lib/libabsl_utf8_for_code_point.a
-  /home/${CURRENT_USER}/.local/lib/libutf8_validity.a
+  ${HOME_PATH}/.local/lib/libutf8_range_lib.a
+  ${HOME_PATH}/.local/lib/libutf8_range.a
+  ${HOME_PATH}/.local/lib/libabsl_utf8_for_code_point.a
+  ${HOME_PATH}/.local/lib/libutf8_validity.a
 )
