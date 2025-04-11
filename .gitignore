@@ -74,3 +74,4 @@ CMakeUserPresets.json
 
 /cmake
 /src/generated/*
+!/src/generated/.gitkeep
