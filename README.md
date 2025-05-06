@@ -5,7 +5,7 @@
     chmod +x config.sh
     ./config.sh
 ## Compile and Build (Unix) 
-**Before compiling and building, add the right HOME_PATH usually /home/<user>**
+**Before compiling and building, add the right HOME_PATH usually /home/<user>** and change self_addr in server.cpp to the wished address
 
     mkdir -p cmake/build
     pushd cmake/build
@@ -14,3 +14,8 @@
 
 
 ## Binaries are found in Dateisystem/cmake/build/<client | server>
+
+
+## Run
+    ./server 192.168.0.180:50051 192.168.0.18X:50051
+    ./client "[2001:db8::1234]:50051" ./directory

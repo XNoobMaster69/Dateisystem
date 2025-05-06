@@ -1,92 +1,179 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <chrono>
-#include <thread>
-#include <filesystem>
 #include <grpcpp/grpcpp.h>
-
+#include "./generated/dateisystem.pb.h"
 #include "./generated/dateisystem.grpc.pb.h"
 
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+#include <chrono>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+
+using namespace dateisystem;
 using grpc::Channel;
 using grpc::ClientContext;
-using grpc::Status;
-using dateisystem::SyncService;
-using dateisystem::SyncRequest;
-using dateisystem::SyncResponse;
-
-// Dummy-Hashfunktion TODO MD5 oder SHAxx verwenden
-std::string ComputeHash(const std::string& file_path) {
-  try {
-      std::uintmax_t filesize = std::filesystem::file_size(file_path);
-      auto ftime = std::filesystem::last_write_time(file_path).time_since_epoch().count();
-      return std::to_string(filesize) + "_" + std::to_string(ftime);
-  } catch (std::exception& e) {
-      std::cerr << "Hash-Error: " << e.what() << std::endl;
-      return "";
-  }
-}
-
-std::string ReadFileContent(const std::string& file_path) {
-  std::ifstream in(file_path, std::ios::in | std::ios::binary);
-  if (!in) {
-      std::cerr << "Error while opening file: " << file_path << std::endl;
-      return "";
-  }
-  std::ostringstream contents;
-  contents << in.rdbuf();
-  in.close();
-  return contents.str();
-}
 
 class SyncClient {
+  std::unique_ptr<PrimaryService::Stub> stub_;
 public:
-    SyncClient(std::shared_ptr<Channel> channel): stub_(SyncService::NewStub(channel)) {}
+  SyncClient(std::shared_ptr<Channel> ch)
+    : stub_(PrimaryService::NewStub(ch)) {}
 
-    bool SyncFile(const std::string& file_path, const std::string& hash, const std::string& file_content) {
-        SyncRequest request;
-        request.set_file_path(file_path);
-        request.set_hash(hash);
-        request.set_file_content(file_content);
+  bool SyncFile(const std::string& rel, const std::string& content) {
+    SyncRequest rq; rq.set_file_path(rel); rq.set_file_content(content);
+    SyncResponse rs; ClientContext ctx;
+    return stub_->SyncFile(&ctx, rq, &rs).ok() && rs.success();
+  }
 
-        SyncResponse reply;
-        ClientContext context;
+  bool DeleteFile(const std::string& rel) {
+    DeleteRequest rq; rq.set_file_path(rel);
+    DeleteResponse rs; ClientContext ctx;
+    return stub_->DeleteFile(&ctx, rq, &rs).ok() && rs.success();
+  }
 
-        Status status = stub_->SyncFile(&context, request, &reply);
-        if (status.ok()) {
-            std::cout << "Server-response: " << reply.message() << std::endl;
-            return reply.success();
-        } else {
-            std::cerr << "gRPC-error: " << status.error_message() << std::endl;
-            return false;
-        }
-    }
-
-private:
-    std::unique_ptr<SyncService::Stub> stub_;
+  std::vector<FileEntry> ListFiles() {
+    ListRequest rq; ListResponse rs; ClientContext ctx;
+    stub_->ListFiles(&ctx, rq, &rs);
+    return { rs.entries().begin(), rs.entries().end() };
+  }
 };
 
-int main(int argc, char** argv) {
-  if(argc < 2) {
-      std::cerr << "Usage: " << argv[0] << " <Pfad zu Datei>" << std::endl;
-      return 1;
+static std::string fileHash(const std::filesystem::path& p) {
+  try {
+    auto s = std::filesystem::file_size(p);
+    auto t = std::filesystem::last_write_time(p).time_since_epoch().count();
+    return std::to_string(s) + "_" + std::to_string(t);
+  } catch(...) {
+    return "";
   }
-  std::string path = argv[1];
-  SyncClient client(grpc::CreateChannel("localhost:50051", grpc::InsecureChannelCredentials()));  // TODO Adresse anpassen
+}
 
-  std::string last_hash = ComputeHash(path);
-  std::cout << "Waiting " << path << " for changes..." << std::endl;
-  
-  // Endlosschleife zur Überwachung der Datei
-  while (true) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Überprüfung alle 1000 ms
-      std::string current_hash = ComputeHash(path);
-      if (current_hash != last_hash) {
-          std::cout << "Changes detected: " << path << std::endl;
-          std::string content = ReadFileContent(path);
-          client.SyncFile(path, current_hash, content);
-          last_hash = current_hash;
-      }
+int main(int argc, char** argv) {
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0]
+              << " <server:port> <directory>\n";
+    return 1;
   }
+  std::string server_addr = argv[1];
+  std::filesystem::path root = argv[2];
+  if (!std::filesystem::is_directory(root)) {
+    std::cerr << "Not a directory: " << root << "\n";
+    return 1;
+  }
+
+  // Wir nehmen den Ordnernamen als prefix
+  std::string prefix = root.filename().string() + "/";
+
+  SyncClient client(
+    grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials())
+  );
+
+  // 1) Initial Pull aller Dateien vom Server
+  {
+    auto srv = client.ListFiles();
+    for (auto& fe : srv) {
+      const auto& path = fe.file_path();
+      if (path.rfind(prefix, 0) != 0) continue;
+      auto rel = path.substr(prefix.size());
+      auto full = root / rel;
+      std::filesystem::create_directories(full.parent_path());
+      if (!std::filesystem::exists(full)) {
+        std::ofstream out(full, std::ios::binary);
+        out.write(fe.file_content().data(), fe.file_content().size());
+      }
+    }
+  }
+
+  // 2) Initial: alle lokalen Dateien pushen
+  std::unordered_set<std::string> last_local;
+  std::unordered_map<std::string,std::string> last_hash;
+  for (auto& ent : std::filesystem::recursive_directory_iterator(root)) {
+    if (!ent.is_regular_file()) continue;
+    auto rel0 = std::filesystem::relative(ent.path(), root).string();
+    std::string key = prefix + rel0;
+    last_local.insert(key);
+    last_hash[key] = fileHash(ent.path());
+    std::ifstream in(ent.path(), std::ios::binary);
+    std::string buf{ std::istreambuf_iterator<char>(in),
+                     std::istreambuf_iterator<char>() };
+    client.SyncFile(key, buf);
+  }
+
+  // 3) Polling-Loop
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    // A) Scan lokal: cur_local und cur_hash
+    std::unordered_set<std::string> cur_local;
+    std::unordered_map<std::string,std::string> cur_hash;
+    for (auto& ent : std::filesystem::recursive_directory_iterator(root)) {
+      if (!ent.is_regular_file()) continue;
+      auto rel0 = std::filesystem::relative(ent.path(), root).string();
+      std::string key = prefix + rel0;
+      cur_local.insert(key);
+      cur_hash[key] = fileHash(ent.path());
+    }
+
+    // B) Neue/Geänderte lokal → SyncFile
+    for (auto& key : cur_local) {
+      bool is_new = !last_local.count(key);
+      bool modified = last_hash.count(key) && last_hash[key] != cur_hash[key];
+      if (is_new || modified) {
+        auto full = root / key.substr(prefix.size());
+        std::ifstream in(full, std::ios::binary);
+        std::string buf{ std::istreambuf_iterator<char>(in),
+                         std::istreambuf_iterator<char>() };
+        std::cout << "→ SyncFile: " << key << "\n";
+        client.SyncFile(key, buf);
+      }
+    }
+
+    // C) Lokale Löschungen → DeleteFile
+    for (auto& key : last_local) {
+      if (!cur_local.count(key)) {
+        std::cout << "→ DeleteFile: " << key << "\n";
+        client.DeleteFile(key);
+      }
+    }
+
+    // D) Server-Snapshot holen
+    auto srv = client.ListFiles();
+    std::unordered_set<std::string> srv_set;
+    std::unordered_map<std::string,std::string> srv_content;
+    for (auto& fe : srv) {
+      const auto& p = fe.file_path();
+      if (p.rfind(prefix,0)!=0) continue;
+      srv_set.insert(p);
+      srv_content[p] = fe.file_content();
+    }
+
+    // E) Server-Löschungen → lokal entfernen
+    for (auto& key : last_local) {
+      if (srv_set.count(key)==0 && cur_local.count(key)) {
+        auto full = root / key.substr(prefix.size());
+        std::filesystem::remove(full);
+        std::cout << "→ Local delete: " << key << "\n";
+      }
+    }
+
+    // F) Neue Server-Dateien → lokal anlegen
+    for (auto& key : srv_set) {
+      if (!cur_local.count(key)) {
+        auto rel = key.substr(prefix.size());
+        auto full = root / rel;
+        std::filesystem::create_directories(full.parent_path());
+        std::ofstream out(full, std::ios::binary);
+        auto& buf = srv_content[key];
+        out.write(buf.data(), buf.size());
+        std::cout << "→ Pulled new: " << key << "\n";
+      }
+    }
+
+    // G) Update last_local & last_hash
+    last_local = std::move(cur_local);
+    last_hash  = std::move(cur_hash);
+  }
+
   return 0;
 }

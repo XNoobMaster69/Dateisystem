@@ -1,20 +1,53 @@
 syntax = "proto3";
-
 package dateisystem;
 
-service SyncService {
-  rpc SyncFile (SyncRequest) returns (SyncResponse);
+service PrimaryService {
+  rpc SyncFile    (SyncRequest)  returns (SyncResponse);
+  rpc DeleteFile  (DeleteRequest) returns (DeleteResponse);
+  rpc ListFiles   (ListRequest)  returns (ListResponse);
 }
 
-// Struktur für Req
-message SyncRequest {
-  string file_path = 1;   // Pfad der zu synchronisierenden Datei
-  string hash = 2;        // Berechneter Hash-Wert zur Änderungserkennung
-  bytes file_content = 3; // Dateiinhalt (bei Änderung)
+service ReplicationService {
+  rpc ReplicateEntry (LogEntry)      returns (Ack);
+  rpc GetUpdates     (UpdateRequest) returns (UpdateResponse);
 }
 
-// Struktur für Res
-message SyncResponse {
-  bool success = 1;       // Gibt an, ob die Synchronisation erfolgreich war
-  string message = 2;     // Nachricht (z. B. Status oder Fehlerbeschreibung)
+service DiscoveryService {
+  rpc Join          (JoinRequest) returns (PeerList);
+  rpc PeerExchange  (PeerList)    returns (PeerList);
 }
+
+service ClockSyncService {
+  rpc GetTime     (TimeRequest)   returns (TimeResponse);
+  rpc AdjustTime  (AdjustRequest) returns (AdjustResponse);
+}
+
+message SyncRequest    { string file_path = 1; bytes file_content = 2; }
+message SyncResponse   { bool success     = 1; string message = 2; }
+message DeleteRequest  { string file_path = 1; }
+message DeleteResponse { bool success     = 1; string message = 2; }
+message ListRequest    {}
+message FileEntry {
+  string file_path   = 1;
+  bytes  file_content = 2;
+}
+message ListResponse  { repeated FileEntry entries = 1; }
+
+message LogEntry      {
+  int64 seq         = 1;
+  int64 timestamp   = 2;
+  string file_path  = 3;
+  bytes  file_content = 4;
+  bool   is_delete  = 5;
+}
+message Ack           { bool success = 1; }
+message UpdateRequest { int64 from_seq = 1; }
+message UpdateResponse{ repeated LogEntry entries = 1; }
+
+message JoinRequest   { string address = 1; }
+message PeerList      { repeated string peers = 1; }
+
+message TimeRequest   {}
+message TimeResponse  { int64 unix_millis = 1; }
+message AdjustRequest  { int64 offset_millis = 1; }
+message AdjustResponse { bool success       = 1; }
