@@ -4,8 +4,14 @@
     cd Dateisystem
     chmod +x config.sh
     ./config.sh
+
+**After the config.sh is done, set local paths**
+
+    export MY_INSTALL_DIR="$HOME/.local"
+    mkdir -p "$MY_INSTALL_DIR"
+    export PATH="$MY_INSTALL_DIR/bin:$PATH"
 ## Compile and Build (Unix) 
-**Before compiling and building, add the right HOME_PATH usually /home/<user>** and change self_addr in server.cpp to the wished address
+Before compiling and building, add the right **HOME_PATH** to **CMakeLists.txt** usually /home/<user> and change self_addr in server.cpp to the wished address
 
     mkdir -p cmake/build
     pushd cmake/build
