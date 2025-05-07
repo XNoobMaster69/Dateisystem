@@ -1,10 +1,13 @@
+// dateisystem.proto
 syntax = "proto3";
 package dateisystem;
 
+import "google/protobuf/empty.proto";
+
 service PrimaryService {
-  rpc SyncFile    (SyncRequest)  returns (SyncResponse);
-  rpc DeleteFile  (DeleteRequest) returns (DeleteResponse);
-  rpc ListFiles   (ListRequest)  returns (ListResponse);
+  rpc SyncFile    (SyncRequest)   returns (SyncResponse);
+  rpc DeleteFile  (DeleteRequest)  returns (DeleteResponse);
+  rpc ListFiles   (ListRequest)    returns (ListResponse);
 }
 
 service ReplicationService {
@@ -22,10 +25,19 @@ service ClockSyncService {
   rpc AdjustTime  (AdjustRequest) returns (AdjustResponse);
 }
 
+// Neuer Service für Master-Seq-Abfrage
+service MasterInfo {
+  rpc GetMasterSeq (google.protobuf.Empty) returns (SeqResponse);
+}
+
+message SeqResponse {
+  int64 master_seq = 1;
+}
+
 message SyncRequest    { string file_path = 1; bytes file_content = 2; }
-message SyncResponse   { bool success     = 1; string message = 2; }
-message DeleteRequest  { string file_path = 1; }
-message DeleteResponse { bool success     = 1; string message = 2; }
+message SyncResponse   { bool   success     = 1; string message = 2; }
+message DeleteRequest  { string file_path  = 1; }
+message DeleteResponse { bool   success     = 1; string message = 2; }
 message ListRequest    {}
 message FileEntry {
   string file_path   = 1;
@@ -33,12 +45,12 @@ message FileEntry {
 }
 message ListResponse  { repeated FileEntry entries = 1; }
 
-message LogEntry      {
-  int64 seq         = 1;
-  int64 timestamp   = 2;
-  string file_path  = 3;
-  bytes  file_content = 4;
-  bool   is_delete  = 5;
+message LogEntry {
+  int64  seq           = 1;
+  int64  timestamp     = 2;
+  string file_path     = 3;
+  bytes  file_content  = 4;
+  bool   is_delete     = 5;
 }
 message Ack           { bool success = 1; }
 message UpdateRequest { int64 from_seq = 1; }
@@ -49,5 +61,5 @@ message PeerList      { repeated string peers = 1; }
 
 message TimeRequest   {}
 message TimeResponse  { int64 unix_millis = 1; }
-message AdjustRequest  { int64 offset_millis = 1; }
-message AdjustResponse { bool success       = 1; }
+message AdjustRequest { int64 offset_millis = 1; }
+message AdjustResponse{ bool success        = 1; }

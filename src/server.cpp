@@ -57,6 +57,7 @@ public:
   PrimaryServiceImpl(State& S) : S_(S) {}
 
   Status SyncFile(ServerContext*, const SyncRequest* req, SyncResponse* resp) override {
+    auto t_start = std::chrono::high_resolution_clock::now();
     namespace fs = std::filesystem;
     // Zielpfad erzeugen
     fs::path target = DATA_DIR / req->file_path();
@@ -103,6 +104,10 @@ public:
       });
     }
     for (auto& t : thr) t.join();
+    auto t_end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+    std::cout << "[Repl] Datei '" << req->file_path()
+              << "' repliziert in " << duration << " ms\n";
 
     bool ok = (acks.load() >= peers.size());
     resp->set_success(ok);
@@ -173,6 +178,12 @@ public:
   Status ReplicateEntry(ServerContext*, const LogEntry* e, Ack* a) override {
     std::lock_guard<std::mutex> lk(S_.mtx);
     S_.buffer[e->seq()] = *e;
+    
+    std::cout << "[Slave] Empfange seq=" << e->seq()
+    << " @ " << std::chrono::duration_cast<std::chrono::milliseconds>(
+                 std::chrono::system_clock::now().time_since_epoch()).count()
+    << "\n";
+
     int64_t want = S_.next_seq.load();
     namespace fs = std::filesystem;
     while (true) {
@@ -305,6 +316,47 @@ int main(int argc, char** argv) {
       std::cout << "\n";
       std::lock_guard<std::mutex> lk(S.peers_mtx);
       S.peers.assign(initial.peers().begin(), initial.peers().end());
+      // Initiale Synchronisation vom Master (nur Slaves)
+      {
+        auto stub = ReplicationService::NewStub(
+          grpc::CreateChannel(master_addr, grpc::InsecureChannelCredentials()));
+        UpdateRequest ur;
+        ur.set_from_seq(1);
+        UpdateResponse ursp;
+        ClientContext ctx;
+        if (stub->GetUpdates(&ctx, ur, &ursp).ok()) {
+          std::lock_guard<std::mutex> lk(S.mtx);
+          for (auto& e : ursp.entries()) {
+            S.buffer[e.seq()] = e;
+          }
+          // Sofort anwenden
+          int64_t want = S.next_seq.load();
+          namespace fs = std::filesystem;
+          while (true) {
+            auto it = S.buffer.find(want);
+            if (it == S.buffer.end()) break;
+            fs::path target = DATA_DIR / it->second.file_path();
+            std::error_code ec;
+            fs::create_directories(target.parent_path(), ec);
+            if (it->second.is_delete()) {
+              fs::remove(target, ec);
+            } else {
+              std::ofstream out(target, std::ios::binary);
+              out.write(it->second.file_content().data(),
+                        it->second.file_content().size());
+            }
+            S.log.push_back(it->second);
+            S.buffer.erase(it);
+            S.next_seq.fetch_add(1);
+            want++;
+          }
+          std::cout << "[Startup Sync] " << ursp.entries_size()
+                    << " Einträge vom Master übernommen.\n";
+        } else {
+          std::cerr << "[Startup Sync] GetUpdates vom Master fehlgeschlagen.\n";
+        }
+      }
+
     } else {
       std::cerr << "Join RPC failed: " << ctx.debug_error_string() << "\n";
     }
