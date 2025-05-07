@@ -69,6 +69,11 @@ int main(int argc, char** argv) {
     grpc::CreateChannel(server_addr, grpc::InsecureChannelCredentials())
   );
 
+  // Initial-Sync Startzeit & Zähler
+  auto start = std::chrono::high_resolution_clock::now();
+  int pulled_count = 0;
+  int pushed_count = 0;
+
   // 1) Initial Pull aller Dateien vom Server
   {
     auto srv = client.ListFiles();
@@ -81,6 +86,7 @@ int main(int argc, char** argv) {
       if (!std::filesystem::exists(full)) {
         std::ofstream out(full, std::ios::binary);
         out.write(fe.file_content().data(), fe.file_content().size());
+        pulled_count++;
       }
     }
   }
@@ -98,7 +104,17 @@ int main(int argc, char** argv) {
     std::string buf{ std::istreambuf_iterator<char>(in),
                      std::istreambuf_iterator<char>() };
     client.SyncFile(key, buf);
+    pushed_count++;
   }
+
+  // Initial-Sync Dauer berechnen und ausgeben
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+  int total = pulled_count + pushed_count;
+  std::cout << "Initial-Sync: " << total << " Dateien (" 
+            << pulled_count << " gepullt, " 
+            << pushed_count << " gepusht) in " 
+            << duration << " ms\n";
 
   // 3) Polling-Loop
   while (true) {
